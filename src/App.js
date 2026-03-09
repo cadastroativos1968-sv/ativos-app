@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "./App.css";
+
 
 function Login({ onLogin }) {
   const [login, setLogin] = useState("");
@@ -30,90 +30,29 @@ function Login({ onLogin }) {
   );
 }
 
+
+
 function Menu({ setTela, setTipoAtual, logout }) {
   return (
     <div className="menu-lateral">
-      <button onClick={() => { setTipoAtual("produtos"); setTela("produtos"); }}>
+      <button onClick={() => { setTipoAtual("Computadores"); setTela("Computadores"); }}>
         Computadores
       </button>
 
-      <button onClick={() => { setTipoAtual("impressoras"); setTela("impressoras"); }}>
+      <button onClick={() => { setTipoAtual("Impressoras"); setTela("Impressoras"); }}>
         Impressoras
       </button>
 
-      <button onClick={() => { setTipoAtual("coletores"); setTela("coletores"); }}>
+      <button onClick={() => { setTipoAtual("Coletores"); setTela("Coletores"); }}>
         Coletores e Celulares
       </button>
 
-    <button onClick={() => setTela("relatorios")}>Relatórios(BETA)</button> {/* Novo botão */}
+    <button onClick={() => setTela("relatorios")}>Relatórios</button> {/* Novo botão */}
 
       <button onClick={logout}>Sair</button>
     </div>
   );
 }
-
-function Relatorios({ setTela }) {
-  const [relatorios, setRelatorios] = useState([]);
-
-  useEffect(() => {
-    async function fetchRelatorios() {
-      try {
-        const response = await fetch("http://localhost:3001/api/relatorios");
-        const data = await response.json();
-        setRelatorios(data);
-      } catch (error) {
-        console.error("Erro ao buscar relatórios", error);
-      }
-    }
-
-    fetchRelatorios();
-  }, []);
-
-  return (
-    <div className="relatorios-container">
-      <div className="topo">
-        <h3>Relatórios de Alterações</h3>
-        <button onClick={() => setTela("produtos")}>Voltar</button>
-      </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Código</th>
-            <th>Tipo</th>
-            <th>Campo Alterado</th>
-            <th>Valor Antigo</th>
-            <th>Valor Novo</th>
-            <th>Usuário</th>
-            <th>Operação</th>
-            <th>Comentário</th>
-          </tr>
-        </thead>
-        <tbody>
-          {relatorios.length === 0 ? (
-            <tr>
-              <td colSpan="8">Nenhum relatório encontrado</td>
-            </tr>
-          ) : (
-            relatorios.map((log, index) => (
-              <tr key={index}>
-                <td>{log.CODIGO}</td>
-                <td>{log.TIPO_ATIVO}</td>
-                <td>{log.CAMPO_ALTERADO}</td>
-                <td>{log.VALOR_ANTIGO}</td>
-                <td>{log.VALOR_NOVO}</td>
-                <td>{log.USUARIO_NOME}</td>
-                <td>{log.TIPO_OPERACAO}</td>
-                <td>{log.COMENTARIO}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 
 function Campo({ label, name, value, col, editando, onChange }) {
   return (
@@ -184,7 +123,6 @@ function handleChange(e) {
   });
 }
 
-
 function irBuscar() {
   setBuscaInicial(textoBusca);
   setTela("buscar");
@@ -219,6 +157,8 @@ function irBuscar() {
     <option value="2">Inativo</option>
     <option value="3">Vencido</option>
     <option value="5">Estoque</option>
+    <option value="6">Manutenção Externa</option>
+    <option value="7">Manutenção Interna</option>
   </select>
 </div>
 
@@ -278,7 +218,7 @@ function irBuscar() {
 <Campo label="Modelo" name="MODELO" value={dados.MODELO} />
 
 
-        {tipo === "produtos" && (
+        {tipo === "Computadores" && (
   <>
     <Campo label="Processador" name="PROCESSADOR" value={dados.PROCESSADOR} />
     <Campo
@@ -290,7 +230,7 @@ function irBuscar() {
   </>
 )}
 
-         {tipo === "coletores" && 
+         {tipo === "Coletores" && 
   <Campo 
     label="Linha" 
     name="LINHA"
@@ -371,19 +311,22 @@ function Buscar({ setTela, buscaInicial, tipoAtual,setDadosProduto,setDadosImpre
 
   if (filtros.nome) filtrosLimpos.nome = filtros.nome;
   if (filtros.usuario) filtrosLimpos.usuario = filtros.usuario;
+  if (filtros.serial) filtrosLimpos.serial = filtros.serial;
+  if (filtros.modelo) filtrosLimpos.modelo = filtros.modelo;
+  if (filtros.fabricante && filtros.fabricante !== "Fabricantes")
+    filtrosLimpos.fabricante = filtros.fabricante;
   if (filtros.status && filtros.status !== "Status")
     filtrosLimpos.status = filtros.status;
   if (filtros.tipo && filtros.tipo !== "Tipo")
     filtrosLimpos.tipo = filtros.tipo;
   if (filtros.localidade && filtros.localidade !== "Localidade")
     filtrosLimpos.localidade = filtros.localidade;
-filtrosLimpos.tipoTela = tipoAtual;
+
+  filtrosLimpos.tipoTela = tipoAtual;
+
   const query = new URLSearchParams(filtrosLimpos).toString();
 
-  const response = await fetch(
-    `http://localhost:3001/api/ativos?${query}`
-  );
-
+  const response = await fetch(`/api/ativos?${query}`);
   const result = await response.json();
   setDados(Array.isArray(result) ? result : []);
 }
@@ -396,11 +339,11 @@ filtrosLimpos.tipoTela = tipoAtual;
 
       <div className="buscar-form">
         <input name="nome" placeholder="Nome" value={filtros.nome} onChange={handleChange} />
-        <input name="usuario" placeholder="Usuário" onChange={handleChange} />
-        <input name="modelo" placeholder="Modelo" onChange={handleChange} />
-        <input name="serial" placeholder="Serial" onChange={handleChange} />
+        <input name="usuario" placeholder="Usuário" value={filtros.usuario} onChange={handleChange} />
+<input name="modelo" placeholder="Modelo" value={filtros.modelo} onChange={handleChange} />
+<input name="serial" placeholder="Serial" value={filtros.serial} onChange={handleChange} />
 
-         <select name="fabricante" onChange={handleChange}>
+         <select name="fabricante" value={filtros.fabricante} onChange={handleChange}>
           <option>Fabricantes</option>
           <option>MOBILEBASE</option>
           <option>motorola</option>
@@ -416,17 +359,20 @@ filtrosLimpos.tipoTela = tipoAtual;
           <option>BLUEBIRD</option>
           <option>DSIC</option>
           <option>YEP</option>
+          <option>QEMU</option>
         </select>
 
-        <select name="status" onChange={handleChange}>
+        <select name="status" value={filtros.status} onChange={handleChange}>
           <option>Status</option>
           <option>Ativo</option>
           <option>Inativo</option>
-          <option>Estoque</option>
           <option>Vencido</option>
+          <option>Estoque</option>
+          <option>Manutenção Externa</option>
+          <option>Manutenção Interna</option>         
         </select>
 
-        <select name="tipo" onChange={handleChange}>
+       <select name="tipo" value={filtros.tipo} onChange={handleChange}>
           <option>Tipo</option>
           <option>moto g(9) play</option>
           <option>moto g22</option>
@@ -446,7 +392,7 @@ filtrosLimpos.tipoTela = tipoAtual;
           <option>NOTEBOOK</option>
         </select>
 
-        <select name="localidade" onChange={handleChange}>
+        <select name="localidade" value={filtros.localidade} onChange={handleChange}>
           <option>Localidade</option>
           <option>Loja 01</option>
           <option>Loja 2</option>
@@ -502,7 +448,7 @@ filtrosLimpos.tipoTela = tipoAtual;
         <button onClick={buscarAtivos}>Buscar 🔍</button>
       </div>
 
-      <table>
+      <table className="tabela-busca">
         <thead>
           <tr>
             <th>Nome</th>
@@ -525,20 +471,20 @@ filtrosLimpos.tipoTela = tipoAtual;
         onDoubleClick={async () => {
 
   const response = await fetch(
-    `http://localhost:3001/api/ativos/${item.CODIGO}?tipo=${tipoAtual}`
+    `/api/ativos/${item.CODIGO}?tipo=${tipoAtual}`
   );
 
   const completo = await response.json();
 
-  if (tipoAtual === "produtos") {
+  if (tipoAtual === "Computadores") {
     setDadosProduto(completo)
   }
 
-  if (tipoAtual === "impressoras") {
+  if (tipoAtual === "Impressoras") {
     setDadosImpressora(completo)
   }
 
-  if (tipoAtual === "coletores") {
+  if (tipoAtual === "Coletores") {
     setDadosColetor(completo)
   }
 
@@ -576,7 +522,9 @@ function Transferir({ setTela, dados, tipoAtual, setDados }) {
     "Ativo": "1",
     "Inativo": "2",
     "Vencido": "3",
-    "Estoque": "5"
+    "Estoque": "5",
+    "Manutenção Externa": "6",
+    "Manutenção Interna": "7"
   };
 
   const localidadeMap = {
@@ -625,7 +573,7 @@ function Transferir({ setTela, dados, tipoAtual, setDados }) {
       const codigoLocalidade = localidadeMap[novaLocalidade] || novaLocalidade;
 
       const response = await fetch(
-        `http://localhost:3001/api/ativos/${dados.CODIGO}/transferir?tipoTela=${tipoAtual}`,
+        `/api/ativos/${dados.CODIGO}/transferir?tipoTela=${tipoAtual}`,
         {
           method: "PUT",
           headers: {
@@ -653,7 +601,7 @@ function Transferir({ setTela, dados, tipoAtual, setDados }) {
 
       // Recarregar os dados do ativo atualizado
       const refreshedResponse = await fetch(
-        `http://localhost:3001/api/ativos/${dados.CODIGO}?tipo=${tipoAtual}`
+        `/api/ativos/${dados.CODIGO}?tipo=${tipoAtual}`
       );
       const updatedData = await refreshedResponse.json();
 
@@ -694,6 +642,9 @@ function Transferir({ setTela, dados, tipoAtual, setDados }) {
             <option value="Inativo">Inativo</option>
             <option value="Vencido">Vencido</option>
             <option value="Estoque">Estoque</option>
+            <option value="Manutenção Externa">Manutenção Externa</option>
+            <option value="Manutenção Interna">Manutenção Interna</option>
+            
           </select>
         </div>
 
@@ -756,17 +707,349 @@ function Transferir({ setTela, dados, tipoAtual, setDados }) {
   );
 }
 
+function RelatoriosMenu({ setTela, setRelatorioSelecionado, tipoAtual }) {
+  const abrir = (slug, titulo) => {
+    setRelatorioSelecionado({ slug, titulo, tipoTela: tipoAtual });
+    setTela("relatorio_detalhe");
+  };
+
+  return (
+    <div className="relatorios-container">
+      <div className="topo">
+        <h3>Relatórios</h3>
+        <button onClick={() => setTela(tipoAtual)}>Voltar</button>
+      </div>
+
+      <div className="cards-relatorios">
+        <button onClick={() => abrir("sem-patrimonio", "Itens sem Patrimônio")}>
+          Itens sem Patrimônio
+        </button>
+
+        <button onClick={() => abrir("sem-contrato", "Itens sem Contrato")}>
+          Itens sem Contrato
+        </button>
+
+        <button onClick={() => abrir("com-contrato", "Itens com Contrato")}>
+          Itens com Contrato
+        </button>
+
+       
+        <button onClick={() => setTela("relatorios_logs")}>
+          Logs de Alterações
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RelatorioDetalhe({ setTela, relatorioSelecionado }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+const [filtros, setFiltros] = useState({
+  nome: "",
+  status: "",
+  tipo: "",
+  localidade: "",
+  usuario: "",
+  patrimonio: "",
+  contrato: "",
+  serial: "",
+  ordenarPor: "NOME",
+  direcao: "ASC",
+});
+
+const [filtrosAplicados, setFiltrosAplicados] = useState({
+  nome: "",
+  status: "",
+  tipo: "",
+  localidade: "",
+  usuario: "",
+  patrimonio: "",
+  contrato: "",
+  serial: "",
+  ordenarPor: "NOME",
+  direcao: "ASC",
+});
+
+  function handleChange(e) {
+    setFiltros({ ...filtros, [e.target.name]: e.target.value });
+  }
+
+const fetchData = useCallback(async () => {
+  try {
+    setLoading(true);
+
+    const query = new URLSearchParams({
+      tipoTela: relatorioSelecionado.tipoTela,
+      ...Object.fromEntries(
+        Object.entries(filtrosAplicados).filter(([_, v]) => v !== "")
+      ),
+    }).toString();
+
+    const resp = await fetch(`/api/relatorios/${relatorioSelecionado.slug}?${query}`);
+    const data = await resp.json();
+    setRows(Array.isArray(data) ? data : []);
+  } catch (e) {
+    console.error(e);
+    setRows([]);
+  } finally {
+    setLoading(false);
+  }
+}, [relatorioSelecionado, filtrosAplicados]);
+
+useEffect(() => {
+  fetchData();
+}, [fetchData]);
+  return (
+    <div className="relatorios-container">
+      <div className="topo">
+        <h3>{relatorioSelecionado.titulo}</h3>
+        <button onClick={() => setTela("relatorios")}>Voltar</button>
+      </div>
+
+      <div className="buscar-form">
+        <input name="nome" placeholder="Nome" value={filtros.nome} onChange={handleChange} />
+        <input name="usuario" placeholder="Usuário" value={filtros.usuario} onChange={handleChange} />
+        <input name="patrimonio" placeholder="Patrimônio" value={filtros.patrimonio} onChange={handleChange} />
+        <input name="contrato" placeholder="Contrato" value={filtros.contrato} onChange={handleChange} />
+        <input name="serial" placeholder="Serial" value={filtros.serial} onChange={handleChange} />
+
+        <select name="status" value={filtros.status} onChange={handleChange}>
+          <option value="">Status</option>
+          <option value="Ativo">Ativo</option>
+          <option value="Inativo">Inativo</option>
+          <option value="Vencido">Vencido</option>
+          <option value="Estoque">Estoque</option>
+          <option value="Manutenção Externa">Manutenção Externa</option>
+          <option value="Manutenção Interna">Manutenção Interna</option>
+        </select>
+
+        <select name="ordenarPor" value={filtros.ordenarPor} onChange={handleChange}>
+          <option value="NOME">Ordenar por Nome</option>
+          <option value="CODIGO">Ordenar por Código</option>
+          <option value="STATUS">Ordenar por Status</option>
+          <option value="TIPO">Ordenar por Tipo</option>
+          <option value="LOCALIDADE">Ordenar por Localidade</option>
+          <option value="USUARIO">Ordenar por Usuário</option>
+          <option value="PATRIMONIO">Ordenar por Patrimônio</option>
+          <option value="CONTRATO">Ordenar por Contrato</option>
+          <option value="SERIAL">Ordenar por Serial</option>
+        </select>
+
+        <select name="direcao" value={filtros.direcao} onChange={handleChange}>
+          <option value="ASC">Crescente</option>
+          <option value="DESC">Decrescente</option>
+        </select>
+
+       <button onClick={() => setFiltrosAplicados({ ...filtros })}>Filtrar 🔍</button>
+      </div>
+
+      {loading ? (
+        <p style={{ textAlign: "center" }}>Carregando...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Nome</th>
+              <th>Status</th>
+              <th>Tipo</th>
+              <th>Localidade</th>
+              <th>Usuário</th>
+              <th>Patrimônio</th>
+              <th>Contrato</th>
+              <th>Serial</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="9">Nenhum resultado</td>
+              </tr>
+            ) : (
+              rows.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.CODIGO}</td>
+                  <td>{r.NOME}</td>
+                  <td>{r.STATUS}</td>
+                  <td>{r.TIPO}</td>
+                  <td>{r.LOCALIDADE}</td>
+                  <td>{r.USUARIO}</td>
+                  <td>{r.PATRIMONIO}</td>
+                  <td>{r.CONTRATO}</td>
+                  <td>{r.SERIAL}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function RelatoriosLogs({ setTela }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+const [filtros, setFiltros] = useState({
+  codigo: "",
+  tipoAtivo: "",
+  campoAlterado: "",
+  usuario: "",
+  tipoOperacao: "",
+  codIdentificacao: "",
+  ordenarPor: "COD_IDENTIFICACAO",
+  direcao: "DESC",
+});
+
+const [filtrosAplicados, setFiltrosAplicados] = useState({
+  codigo: "",
+  tipoAtivo: "",
+  campoAlterado: "",
+  usuario: "",
+  tipoOperacao: "",
+  codIdentificacao: "",
+  ordenarPor: "COD_IDENTIFICACAO",
+  direcao: "DESC",
+});
+
+  function handleChange(e) {
+    setFiltros({ ...filtros, [e.target.name]: e.target.value });
+  }
+
+const buscarLogs = useCallback(async () => {
+  try {
+    setLoading(true);
+
+    const query = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(filtrosAplicados).filter(([_, v]) => v !== "")
+      )
+    ).toString();
+
+    const response = await fetch(`/api/relatorios?${query}`);
+    const data = await response.json();
+    setRows(Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Erro ao buscar relatórios", error);
+    setRows([]);
+  } finally {
+    setLoading(false);
+  }
+}, [filtrosAplicados]);
+
+useEffect(() => {
+  buscarLogs();
+}, [buscarLogs]);
+
+  return (
+    <div className="relatorios-container">
+      <div className="topo">
+        <h3>Logs de Alterações</h3>
+        <button onClick={() => setTela("relatorios")}>Voltar</button>
+      </div>
+
+      <div className="buscar-form">
+        <input name="codigo" placeholder="Código" value={filtros.codigo} onChange={handleChange} />
+        <input name="campoAlterado" placeholder="Campo alterado" value={filtros.campoAlterado} onChange={handleChange} />
+        <input name="usuario" placeholder="Usuário" value={filtros.usuario} onChange={handleChange} />
+        <input name="codIdentificacao" placeholder="ID transferência" value={filtros.codIdentificacao} onChange={handleChange} />
+
+        <select name="tipoAtivo" value={filtros.tipoAtivo} onChange={handleChange}>
+          <option value="">Tipo ativo</option>
+          <option value="Computadores">Computadores</option>
+          <option value="Impressoras">Impressoras</option>
+          <option value="Coletores">Coletores</option>
+        </select>
+
+        <select name="tipoOperacao" value={filtros.tipoOperacao} onChange={handleChange}>
+          <option value="">Operação</option>
+          <option value="ALTERACAO">ALTERACAO</option>
+          <option value="TRANSFERENCIA">TRANSFERENCIA</option>
+        </select>
+
+        <select name="ordenarPor" value={filtros.ordenarPor} onChange={handleChange}>
+          <option value="COD_IDENTIFICACAO">Ordenar por ID</option>
+          <option value="CODIGO">Ordenar por Código</option>
+          <option value="TIPO_ATIVO">Ordenar por Tipo</option>
+          <option value="CAMPO_ALTERADO">Ordenar por Campo</option>
+          <option value="USUARIO_NOME">Ordenar por Usuário</option>
+          <option value="TIPO_OPERACAO">Ordenar por Operação</option>
+        </select>
+
+        <select name="direcao" value={filtros.direcao} onChange={handleChange}>
+          <option value="DESC">Decrescente</option>
+          <option value="ASC">Crescente</option>
+        </select>
+
+        <button onClick={() => setFiltrosAplicados({ ...filtros })}>Filtrar 🔍</button>
+      </div>
+ 
+
+
+      {loading ? (
+        <p style={{ textAlign: "center" }}>Carregando...</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Marca</th>
+              <th>Serial</th>
+              <th>Tipo</th>
+              <th>Campo Alterado</th>
+              <th>Valor Antigo</th>
+              <th>Valor Novo</th>
+              <th>Usuário</th>
+              <th>Operação</th>
+              <th>Comentário</th>
+              <th>ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="9">Nenhum relatório encontrado</td>
+              </tr>
+            ) : (
+              rows.map((log, index) => (
+                <tr key={index}>
+                  <td>{log.CODIGO}</td>
+                  <td>{log.FABRICANTE}</td>
+                  <td>{log.SERIAL}</td>
+                  <td>{log.TIPO_ATIVO}</td>
+                  <td>{log.CAMPO_ALTERADO}</td>
+                  <td>{log.VALOR_ANTIGO}</td>
+                  <td>{log.VALOR_NOVO}</td>
+                  <td>{log.USUARIO_NOME}</td>
+                  <td>{log.TIPO_OPERACAO}</td>
+                  <td>{log.COMENTARIO}</td>
+                  <td>{log.COD_IDENTIFICACAO}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+
 export default function App() {
   // controla qual tipo está sendo usado na busca
-  const [tipoAtual, setTipoAtual] = useState("produtos");
+  const [tipoAtual, setTipoAtual] = useState("Computadores");
   const [dadosProduto, setDadosProduto] = useState({});
   const [dadosImpressora, setDadosImpressora] = useState({});
   const [dadosColetor, setDadosColetor] = useState({});
   const [tela, setTela] = useState("login");
   const [buscaInicial, setBuscaInicial] = useState("");
+  const [relatorioSelecionado, setRelatorioSelecionado] = useState(null);
 
   const handleLogin = async (login, senha) => {
-    const resp = await fetch("http://localhost:3001/api/login", {
+    const resp = await fetch("/api/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ login, senha }),
@@ -782,7 +1065,7 @@ export default function App() {
     // salva usuário logado
     localStorage.setItem("user", JSON.stringify(data.user));
 
-    setTela("produtos");
+    setTela("Computadores");
   };
 
   const logout = () => {
@@ -791,7 +1074,7 @@ export default function App() {
     setDadosImpressora({});
     setDadosColetor({});
     setBuscaInicial("");
-    setTipoAtual("produtos");
+    setTipoAtual("Computadores");
     setTela("login");
   };
 
@@ -800,7 +1083,7 @@ export default function App() {
       const user = JSON.parse(localStorage.getItem("user") || "null");
 
       const resp = await fetch(
-        `http://localhost:3001/api/ativos/${dados.CODIGO}?tipoTela=${tela}`,
+        `/api/ativos/${dados.CODIGO}?tipoTela=${tela}`,
         {
           method: "PUT",
           headers: {
@@ -830,22 +1113,22 @@ export default function App() {
     <>
       <Menu setTela={setTela} setTipoAtual={setTipoAtual} logout={logout} />
 
-      {tela === "produtos" && (
+      {tela === "Computadores" && (
         <Controle
           titulo="Controle de Notebooks e Desktops"
           dadosInicial={dadosProduto}
           onSalvar={salvar}
-          tipo="produtos"
+          tipo="Computadores"
           setTela={setTela}
           setBuscaInicial={setBuscaInicial}
           itemSelecionado={dadosProduto}
         />
       )}
 
-      {tela === "impressoras" && (
+      {tela === "Impressoras" && (
         <Controle
           titulo="Controle de Impressoras"
-          tipo="impressoras"
+          tipo="Impressoras"
           dadosInicial={dadosImpressora}
           onSalvar={salvar}
           setTela={setTela}
@@ -854,10 +1137,10 @@ export default function App() {
         />
       )}
 
-      {tela === "coletores" && (
+      {tela === "Coletores" && (
         <Controle
           titulo="Controle de Coletores e Celulares"
-          tipo="coletores"
+          tipo="Coletores"
           dadosInicial={dadosColetor}
           onSalvar={salvar}
           setTela={setTela}
@@ -881,14 +1164,29 @@ export default function App() {
 <Transferir
   setTela={setTela}
   tipoAtual={tipoAtual}
-  dados={tipoAtual === "produtos" ? dadosProduto : tipoAtual === "impressoras" ? dadosImpressora : dadosColetor}
-  setDados={tipoAtual === "produtos" ? setDadosProduto : tipoAtual === "impressoras" ? setDadosImpressora : setDadosColetor} // Passando setDados como prop
+  dados={tipoAtual === "Computadores" ? dadosProduto : tipoAtual === "Impressoras" ? dadosImpressora : dadosColetor}
+  setDados={tipoAtual === "Computadores" ? setDadosProduto : tipoAtual === "Impressoras" ? setDadosImpressora : setDadosColetor} // Passando setDados como prop
 />
       )}
 
-      {tela === "relatorios" && (
-        <Relatorios setTela={setTela} /> // Tela de relatórios
-      )}
+{tela === "relatorios" && (
+  <RelatoriosMenu
+    setTela={setTela}
+    setRelatorioSelecionado={setRelatorioSelecionado}
+    tipoAtual={tipoAtual}
+  />
+)}
+
+{tela === "relatorios_logs" && (
+  <RelatoriosLogs setTela={setTela} />
+)}
+
+{tela === "relatorio_detalhe" && relatorioSelecionado && (
+  <RelatorioDetalhe
+    setTela={setTela}
+    relatorioSelecionado={relatorioSelecionado}
+  />
+)}
     </>
   );
 }

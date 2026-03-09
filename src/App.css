@@ -180,15 +180,20 @@ body {
 
 table {
   width: 95%;
-  margin: 15px auto;
+  margin: 20px auto;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 th,
 td {
   border: 1px solid black;
-  padding: 6px;
+  padding: 6px 8px;
   text-align: center;
+  font-size: 14px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 /* TRANSFERIR */
@@ -264,4 +269,87 @@ td {
   padding: 6px 10px;
   border: 1px solid black;
   box-sizing: border-box;
+}
+
+.cards-relatorios {
+  display: grid;
+  grid-template-columns: repeat(2, 220px);
+  gap: 12px;
+  justify-content: center;
+}
+
+.cards-relatorios button {
+  height: 40px;
+  font-size: 14px;
+}
+
+.relatorios-container {
+  background: #ededed;
+  border: 3px solid black;
+  width: calc(100% - 260px);
+  margin: 30px 20px 30px 220px;
+  padding-bottom: 20px;
+  box-sizing: border-box;
+}
+
+.relatorios-container table {
+  width: 95%;
+  margin: 20px auto;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.relatorios-container th,
+.relatorios-container td {
+  border: 1px solid black;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 14px;
+  word-wrap: break-word;
+}
+
+.cards-relatorios {
+  display: grid;
+  grid-template-columns: repeat(2, 220px);
+  gap: 12px;
+  justify-content: center;
+  padding: 20px;
+}
+
+.cards-relatorios button {
+  height: 45px;
+  font-size: 14px;
+}
+
+.buscar-form {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.buscar-form input,
+.buscar-form select,
+.buscar-form button {
+  width: 100%;
+  height: 42px;
+  box-sizing: border-box;
+}
+
+.tabela-busca {
+  width: 95%;
+  margin: 20px auto;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.tabela-busca th,
+.tabela-busca td {
+  border: 1px solid black;
+  padding: 6px 8px;
+  text-align: center;
+  font-size: 14px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
