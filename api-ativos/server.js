@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
+const path = require("path");
 require("dotenv").config();
 
 const app = express();
@@ -113,14 +114,18 @@ async function descreverValorCampo(campo, valor) {
 }
 
 function getViewByTipo(tipo) {
-  if (tipo === "impressoras") return "V_IMPRESSORAS_GSV";
-  if (tipo === "coletores") return "V_COLETORES_GSV";
+  const t = String(tipo || "").toLowerCase();
+
+  if (t === "impressoras") return "V_IMPRESSORAS_GSV";
+  if (t === "coletores") return "V_COLETORES_GSV";
   return "V_COMPUTADORES_GSV";
 }
 
 function getTableByTipo(tipo) {
-  if (tipo === "impressoras") return "glpi_printers";
-  if (tipo === "coletores") return "glpi_phones";
+  const t = String(tipo || "").toLowerCase();
+
+  if (t === "impressoras") return "glpi_printers";
+  if (t === "coletores") return "glpi_phones";
   return "glpi_computers";
 }
 
@@ -271,7 +276,6 @@ app.post("/api/login", async (req, res) => {
 
 /* =========================
    EXEMPLO DE CRIAÇÃO DE USUÁRIO
-   (use se precisar cadastrar)
 ========================= */
 
 app.post("/api/usuarios", async (req, res) => {
@@ -890,6 +894,16 @@ app.get("/api/relatorios/com-contrato", async (req, res) => {
     console.error(err);
     res.status(500).json({ erro: err.message });
   }
+});
+
+/* =========================
+   SERVIR FRONTEND REACT
+========================= */
+
+app.use(express.static(path.join(__dirname, "build")));
+
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
 });
 
 app.listen(3001, () => {
