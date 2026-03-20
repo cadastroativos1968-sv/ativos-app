@@ -11,9 +11,9 @@ async function criarUsuario() {
     port: 3306
   });
 
-  const nome = "Teste2";
-  const login = "Teste2@svicente.com.br";
-  const senha = "pipoca";
+  const nome = "Breno Morais";
+  const login = "breno.morais@svicente.com.br";
+  const senha = "";
 
   const senhaHash = await bcrypt.hash(senha, 12);
 

@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
+const nodemailer = require("nodemailer");
+const path = require("path");
 require("dotenv").config();
 
 const app = express();
@@ -19,9 +21,31 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.office365.com",
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
 /* =========================
    FUNÇÕES AUXILIARES
 ========================= */
+
+function gerarSenhaProvisoria(tamanho = 8) {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#";
+  let senha = "";
+
+  for (let i = 0; i < tamanho; i++) {
+    senha += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return senha;
+}
 
 function descreverNomeCampo(campo) {
   switch (campo) {
@@ -100,27 +124,28 @@ async function descreverValorCampo(campo, valor) {
   switch (campo) {
     case "COD_STATUS":
       return await buscarDescricaoStatus(valor);
-
     case "COD_LOCALIDADE":
       return await buscarDescricaoLocalidade(valor);
-
     case "COD_USUARIO":
       return await buscarNomeUsuarioAtivo(valor);
-
     default:
       return String(valor);
   }
 }
 
 function getViewByTipo(tipo) {
-  if (tipo === "impressoras") return "V_IMPRESSORAS_GSV";
-  if (tipo === "coletores") return "V_COLETORES_GSV";
+  const t = String(tipo || "").toLowerCase();
+
+  if (t === "impressoras") return "V_IMPRESSORAS_GSV";
+  if (t === "coletores") return "V_COLETORES_GSV";
   return "V_COMPUTADORES_GSV";
 }
 
 function getTableByTipo(tipo) {
-  if (tipo === "impressoras") return "glpi_printers";
-  if (tipo === "coletores") return "glpi_phones";
+  const t = String(tipo || "").toLowerCase();
+
+  if (t === "impressoras") return "glpi_printers";
+  if (t === "coletores") return "glpi_phones";
   return "glpi_computers";
 }
 
@@ -158,43 +183,43 @@ function montarFiltrosRelatorio(req) {
   const params = [];
 
   if (req.query.nome) {
-    filtros.push("NOME LIKE ?");
-    params.push(`%${req.query.nome}%`);
+    filtros.push("UPPER(COALESCE(NOME, '')) LIKE ?");
+    params.push(`%${String(req.query.nome).toUpperCase()}%`);
   }
 
-  if (req.query.status && req.query.status !== "Status") {
-    filtros.push("STATUS LIKE ?");
-    params.push(`%${req.query.status}%`);
+  if (req.query.status) {
+    filtros.push("UPPER(COALESCE(STATUS, '')) LIKE ?");
+    params.push(`%${String(req.query.status).toUpperCase()}%`);
   }
 
-  if (req.query.tipo && req.query.tipo !== "Tipo") {
-    filtros.push("TIPO LIKE ?");
-    params.push(`%${req.query.tipo}%`);
+  if (req.query.tipo) {
+    filtros.push("UPPER(COALESCE(TIPO, '')) LIKE ?");
+    params.push(`%${String(req.query.tipo).toUpperCase()}%`);
   }
 
-  if (req.query.localidade && req.query.localidade !== "Localidade") {
-    filtros.push("LOCALIDADE LIKE ?");
-    params.push(`%${req.query.localidade}%`);
+  if (req.query.localidade) {
+    filtros.push("UPPER(COALESCE(LOCALIDADE, '')) LIKE ?");
+    params.push(`%${String(req.query.localidade).toUpperCase()}%`);
   }
 
   if (req.query.usuario) {
-    filtros.push("USUARIO LIKE ?");
-    params.push(`%${req.query.usuario}%`);
+    filtros.push("UPPER(COALESCE(USUARIO, '')) LIKE ?");
+    params.push(`%${String(req.query.usuario).toUpperCase()}%`);
   }
 
   if (req.query.patrimonio) {
-    filtros.push("PATRIMONIO LIKE ?");
-    params.push(`%${req.query.patrimonio}%`);
+    filtros.push("UPPER(COALESCE(PATRIMONIO, '')) LIKE ?");
+    params.push(`%${String(req.query.patrimonio).toUpperCase()}%`);
   }
 
   if (req.query.contrato) {
-    filtros.push("CONTRATO LIKE ?");
-    params.push(`%${req.query.contrato}%`);
+    filtros.push("UPPER(COALESCE(CONTRATO, '')) LIKE ?");
+    params.push(`%${String(req.query.contrato).toUpperCase()}%`);
   }
 
   if (req.query.serial) {
-    filtros.push("SERIAL LIKE ?");
-    params.push(`%${req.query.serial}%`);
+    filtros.push("UPPER(COALESCE(SERIAL, '')) LIKE ?");
+    params.push(`%${String(req.query.serial).toUpperCase()}%`);
   }
 
   const colunasPermitidas = [
@@ -206,7 +231,7 @@ function montarFiltrosRelatorio(req) {
     "USUARIO",
     "PATRIMONIO",
     "CONTRATO",
-    "SERIAL"
+    "SERIAL",
   ];
 
   const ordenarPor = colunasPermitidas.includes(req.query.ordenarPor)
@@ -218,7 +243,7 @@ function montarFiltrosRelatorio(req) {
   return {
     whereExtra: filtros.length ? " AND " + filtros.join(" AND ") : "",
     params,
-    orderBy: ` ORDER BY ${ordenarPor} ${direcao}`
+    orderBy: ` ORDER BY ${ordenarPor} ${direcao}`,
   };
 }
 
@@ -270,8 +295,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* =========================
-   EXEMPLO DE CRIAÇÃO DE USUÁRIO
-   (use se precisar cadastrar)
+   CRIAÇÃO DE USUÁRIO
 ========================= */
 
 app.post("/api/usuarios", async (req, res) => {
@@ -279,7 +303,25 @@ app.post("/api/usuarios", async (req, res) => {
     const { nome, login, senha } = req.body;
 
     if (!nome || !login || !senha) {
-      return res.status(400).json({ erro: "nome, login e senha são obrigatórios" });
+      return res
+        .status(400)
+        .json({ erro: "nome, login e senha são obrigatórios" });
+    }
+
+    const [existe] = await pool.query(
+      `
+      SELECT USUARIO_ID
+      FROM glpi_usuarios_sist
+      WHERE LOGIN = ?
+      LIMIT 1
+      `,
+      [login]
+    );
+
+    if (existe.length > 0) {
+      return res
+        .status(400)
+        .json({ erro: "Já existe um usuário com esse login" });
     }
 
     const senhaHash = await gerarHashSenha(senha);
@@ -296,6 +338,144 @@ app.post("/api/usuarios", async (req, res) => {
   } catch (err) {
     console.error("Erro ao criar usuário:", err);
     res.status(500).json({ erro: "Erro ao criar usuário" });
+  }
+});
+
+/* =========================
+   ESQUECI MINHA SENHA
+========================= */
+
+app.post("/api/esqueci-senha", async (req, res) => {
+  try {
+    const { loginOuEmail } = req.body;
+
+    if (!loginOuEmail) {
+      return res.status(400).json({ erro: "Informe seu e-mail" });
+    }
+
+    const [rows] = await pool.query(
+      `
+      SELECT USUARIO_ID, NOME, LOGIN, ATIVO
+      FROM glpi_usuarios_sist
+      WHERE LOGIN = ?
+      LIMIT 1
+      `,
+      [loginOuEmail]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+    }
+
+    const usuario = rows[0];
+
+    if (Number(usuario.ATIVO) !== 1) {
+      return res.status(400).json({ erro: "Usuário inativo" });
+    }
+
+    const senhaProvisoria = gerarSenhaProvisoria(8);
+    const senhaHash = await gerarHashSenha(senhaProvisoria);
+
+    await pool.query(
+      `
+      UPDATE glpi_usuarios_sist
+      SET SENHA = ?
+      WHERE USUARIO_ID = ?
+      `,
+      [senhaHash, usuario.USUARIO_ID]
+    );
+
+    await transporter.sendMail({
+      from: process.env.EMAIL_FROM || process.env.SMTP_USER,
+      to: usuario.LOGIN,
+      subject: "Nova senha provisória - Sistema de Ativos",
+      html: `
+        <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+          <p>Olá, ${usuario.NOME || "usuário"}.</p>
+          <p>Foi solicitada a redefinição da sua senha no <strong>Sistema de Ativos</strong>.</p>
+          <p>Sua nova senha provisória é:</p>
+          <p style="font-size: 18px; font-weight: bold;">${senhaProvisoria}</p>
+          <p>Entre no sistema com essa senha e altere em seguida na opção <strong>Alterar Senha</strong>.</p>
+          <p>Se você não solicitou essa alteração, entre em contato com o suporte.</p>
+        </div>
+      `,
+    });
+
+    return res.json({
+      mensagem: "Senha provisória enviada com sucesso por e-mail",
+    });
+  } catch (err) {
+    console.error("Erro ao recuperar senha:", err);
+    return res.status(500).json({
+      erro: "Erro ao enviar senha provisória",
+      detalhe: err.message,
+    });
+  }
+});
+
+/* =========================
+   ALTERAR MINHA SENHA
+========================= */
+
+app.put("/api/minha-senha", async (req, res) => {
+  try {
+    const { usuarioId, senhaAtual, novaSenha, confirmarNovaSenha } = req.body;
+
+    if (!usuarioId || !senhaAtual || !novaSenha || !confirmarNovaSenha) {
+      return res.status(400).json({
+        erro:
+          "usuarioId, senhaAtual, novaSenha e confirmarNovaSenha são obrigatórios",
+      });
+    }
+
+    if (novaSenha !== confirmarNovaSenha) {
+      return res
+        .status(400)
+        .json({ erro: "A confirmação da nova senha não confere" });
+    }
+
+    if (String(novaSenha).length < 6) {
+      return res
+        .status(400)
+        .json({ erro: "A nova senha deve ter pelo menos 6 caracteres" });
+    }
+
+    const [rows] = await pool.query(
+      `
+      SELECT USUARIO_ID, SENHA
+      FROM glpi_usuarios_sist
+      WHERE USUARIO_ID = ? AND ATIVO = 1
+      LIMIT 1
+      `,
+      [usuarioId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ erro: "Usuário não encontrado" });
+    }
+
+    const usuario = rows[0];
+    const senhaValida = await verificarSenha(senhaAtual, usuario.SENHA);
+
+    if (!senhaValida) {
+      return res.status(401).json({ erro: "Senha atual inválida" });
+    }
+
+    const novoHash = await gerarHashSenha(novaSenha);
+
+    await pool.query(
+      `
+      UPDATE glpi_usuarios_sist
+      SET SENHA = ?
+      WHERE USUARIO_ID = ?
+      `,
+      [novoHash, usuarioId]
+    );
+
+    return res.json({ mensagem: "Senha alterada com sucesso" });
+  } catch (err) {
+    console.error("Erro ao alterar senha:", err);
+    return res.status(500).json({ erro: "Erro ao alterar senha" });
   }
 });
 
@@ -321,6 +501,11 @@ app.get("/api/ativos", async (req, res) => {
 
     const params = [];
 
+    if (req.query.codigo) {
+      sql += " AND CAST(CODIGO AS CHAR) LIKE ?";
+      params.push(`%${req.query.codigo}%`);
+    }
+
     if (req.query.nome) {
       sql += " AND NOME LIKE ?";
       params.push(`%${req.query.nome}%`);
@@ -341,22 +526,22 @@ app.get("/api/ativos", async (req, res) => {
       params.push(`%${req.query.serial}%`);
     }
 
-    if (req.query.fabricante && req.query.fabricante !== "Fabricantes") {
+    if (req.query.fabricante) {
       sql += " AND FABRICANTE LIKE ?";
       params.push(`%${req.query.fabricante}%`);
     }
 
-    if (req.query.status && req.query.status !== "Status") {
+    if (req.query.status) {
       sql += " AND STATUS LIKE ?";
       params.push(`%${req.query.status}%`);
     }
 
-    if (req.query.tipo && req.query.tipo !== "Tipo") {
+    if (req.query.tipo) {
       sql += " AND TIPO LIKE ?";
       params.push(`%${req.query.tipo}%`);
     }
 
-    if (req.query.localidade && req.query.localidade !== "Localidade") {
+    if (req.query.localidade) {
       sql += " AND LOCALIDADE LIKE ?";
       params.push(`%${req.query.localidade}%`);
     }
@@ -365,7 +550,6 @@ app.get("/api/ativos", async (req, res) => {
 
     const [rows] = await pool.query(sql, params);
     res.json(rows);
-
   } catch (err) {
     console.error("Erro ao listar ativos:", err);
     res.status(500).json({ erro: err.message });
@@ -387,15 +571,45 @@ app.put("/api/ativos/:codigo/transferir", async (req, res) => {
     }
 
     if (!usuarioId) {
-      return res.status(400).json({ erro: "usuarioId é obrigatório (login)" });
+      return res.status(400).json({ erro: "usuarioId é obrigatório" });
     }
 
+    const tipoNormalizado = String(tipoTela).toLowerCase();
     const tabela = getTableByTipo(tipoTela);
 
-    const [dadosAtuais] = await pool.query(
-      `SELECT states_id, locations_id FROM ${tabela} WHERE id = ?`,
-      [codigo]
-    );
+    let dadosAtuais;
+
+    if (tipoNormalizado === "computadores") {
+      [dadosAtuais] = await pool.query(
+        `
+        SELECT
+          gc.states_id,
+          gc.locations_id,
+          gc.otherserial,
+          gci.contracts_id
+        FROM glpi_computers gc
+        LEFT JOIN glpi_contracts_items gci
+          ON gci.items_id = gc.id
+         AND gci.itemtype = 'Computer'
+        WHERE gc.id = ?
+        LIMIT 1
+        `,
+        [codigo]
+      );
+    } else {
+      [dadosAtuais] = await pool.query(
+        `
+        SELECT
+          states_id,
+          locations_id,
+          otherserial
+        FROM ${tabela}
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [codigo]
+      );
+    }
 
     if (dadosAtuais.length === 0) {
       return res.status(404).json({ erro: "Ativo não encontrado" });
@@ -403,24 +617,46 @@ app.put("/api/ativos/:codigo/transferir", async (req, res) => {
 
     const statusAntigo = dadosAtuais[0].states_id;
     const localAntigo = dadosAtuais[0].locations_id;
+    const patrimonioAtual = dadosAtuais[0].otherserial;
+    const contratoAtual = dadosAtuais[0].contracts_id;
+
+    const semPatrimonio =
+      !patrimonioAtual || String(patrimonioAtual).trim() === "";
+
+    const semContrato =
+      !contratoAtual || String(contratoAtual).trim() === "";
+
+    if (tipoNormalizado === "computadores") {
+      if (semPatrimonio && semContrato) {
+        return res.status(400).json({
+          erro: "Item precisa ter patrimônio ou contrato para ser transferido",
+        });
+      }
+    } else {
+      if (semPatrimonio) {
+        return res.status(400).json({
+          erro: "Não é permitido transferir item sem patrimônio preenchido",
+        });
+      }
+    }
 
     const camposAlterados = [];
 
-    if (Number(novoStatus) !== Number(statusAntigo)) {
+    if (novoStatus && Number(novoStatus) !== Number(statusAntigo)) {
       camposAlterados.push({
         campoOriginal: "COD_STATUS",
         campoBanco: "states_id",
         antigo: statusAntigo,
-        novo: novoStatus
+        novo: novoStatus,
       });
     }
 
-    if (Number(novaLocalidade) !== Number(localAntigo)) {
+    if (novaLocalidade && Number(novaLocalidade) !== Number(localAntigo)) {
       camposAlterados.push({
         campoOriginal: "COD_LOCALIDADE",
         campoBanco: "locations_id",
         antigo: localAntigo,
-        novo: novaLocalidade
+        novo: novaLocalidade,
       });
     }
 
@@ -430,11 +666,11 @@ app.put("/api/ativos/:codigo/transferir", async (req, res) => {
 
     const sqlUpdate = `
       UPDATE ${tabela}
-      SET ${camposAlterados.map(c => `${c.campoBanco} = ?`).join(", ")}
+      SET ${camposAlterados.map((c) => `${c.campoBanco} = ?`).join(", ")}
       WHERE id = ?
     `;
 
-    const valores = camposAlterados.map(c => c.novo);
+    const valores = camposAlterados.map((c) => c.novo);
     await pool.query(sqlUpdate, [...valores, codigo]);
 
     const usuarioNome = await buscarUsuario(usuarioId);
@@ -490,7 +726,6 @@ app.put("/api/ativos/:codigo/transferir", async (req, res) => {
       mensagem: "Transferência realizada com sucesso",
       codigoTransferencia,
     });
-
   } catch (err) {
     console.error("Erro na transferência:", err);
     res.status(500).json({ erro: err.message });
@@ -512,13 +747,9 @@ app.get("/api/ativos/:codigo", async (req, res) => {
 
     const view = getViewByTipo(tipo);
 
-    const [rows] = await pool.query(
-      `SELECT * FROM ${view} WHERE CODIGO = ?`,
-      [codigo]
-    );
+    const [rows] = await pool.query(`SELECT * FROM ${view} WHERE CODIGO = ?`, [codigo]);
 
     res.json(rows[0] || null);
-
   } catch (err) {
     console.error("Erro ao buscar ativo:", err);
     res.status(500).json({ erro: err.message });
@@ -550,10 +781,7 @@ app.put("/api/ativos/:codigo", async (req, res) => {
       PATRIMONIO: "otherserial",
     };
 
-    const [rows] = await pool.query(
-      `SELECT * FROM ${view} WHERE CODIGO = ?`,
-      [codigo]
-    );
+    const [rows] = await pool.query(`SELECT * FROM ${view} WHERE CODIGO = ?`, [codigo]);
 
     if (rows.length === 0) {
       return res.status(404).json({ erro: "Registro não encontrado" });
@@ -569,11 +797,12 @@ app.put("/api/ativos/:codigo", async (req, res) => {
     );
 
     if (dadosTabelaReal.length === 0) {
-      return res.status(404).json({ erro: "Registro não encontrado na tabela real" });
+      return res
+        .status(404)
+        .json({ erro: "Registro não encontrado na tabela real" });
     }
 
     const atualReal = dadosTabelaReal[0];
-
     const camposAlterados = [];
 
     const camposIgnorados = [
@@ -603,7 +832,7 @@ app.put("/api/ativos/:codigo", async (req, res) => {
             campoBanco: "states_id",
             antigo: await descreverValorCampo("COD_STATUS", antigoId),
             novo: await descreverValorCampo("COD_STATUS", novoId),
-            novoValorBanco: novoId
+            novoValorBanco: novoId,
           });
         }
 
@@ -620,7 +849,7 @@ app.put("/api/ativos/:codigo", async (req, res) => {
             campoBanco: "locations_id",
             antigo: await descreverValorCampo("COD_LOCALIDADE", antigoId),
             novo: await descreverValorCampo("COD_LOCALIDADE", novoId),
-            novoValorBanco: novoId
+            novoValorBanco: novoId,
           });
         }
 
@@ -637,7 +866,7 @@ app.put("/api/ativos/:codigo", async (req, res) => {
           campoBanco: campoReal,
           antigo: valorAtual ?? "",
           novo: valorNovo ?? "",
-          novoValorBanco: valorNovo
+          novoValorBanco: valorNovo,
         });
       }
     }
@@ -648,19 +877,19 @@ app.put("/api/ativos/:codigo", async (req, res) => {
 
     const sqlUpdate = `
       UPDATE ${tabela}
-      SET ${camposAlterados.map(c => `${c.campoBanco} = ?`).join(", ")}
+      SET ${camposAlterados.map((c) => `${c.campoBanco} = ?`).join(", ")}
       WHERE id = ?
     `;
 
     await pool.query(
       sqlUpdate,
-      [...camposAlterados.map(c => c.novoValorBanco), codigo]
+      [...camposAlterados.map((c) => c.novoValorBanco), codigo]
     );
 
     const { usuarioId } = req.body;
 
     if (!usuarioId) {
-      return res.status(400).json({ erro: "usuarioId é obrigatório (login)" });
+      return res.status(400).json({ erro: "usuarioId é obrigatório" });
     }
 
     const usuarioNome = await buscarUsuario(usuarioId);
@@ -693,15 +922,14 @@ app.put("/api/ativos/:codigo", async (req, res) => {
           usuarioNome,
           "ALTERACAO",
           "Alteração via sistema",
-          null
+          null,
         ]
       );
     }
 
     res.json({
-      mensagem: "Atualizado com sucesso e log registrado"
+      mensagem: "Atualizado com sucesso e log registrado",
     });
-
   } catch (err) {
     console.error("Erro na alteração:", err);
     res.status(500).json({ erro: err.message });
@@ -709,73 +937,69 @@ app.put("/api/ativos/:codigo", async (req, res) => {
 });
 
 /* =========================
-   RELATÓRIO DE LOGS
+   RELATÓRIO DE LOGS / TRANSFERÊNCIAS
 ========================= */
 
 app.get("/api/relatorios", async (req, res) => {
   try {
     let sql = `
-      SELECT 
-        l.CODIGO,
-        l.TIPO_ATIVO,
-        l.CAMPO_ALTERADO,
-        l.VALOR_ANTIGO,
-        l.VALOR_NOVO,
-        l.USUARIO_NOME,
-        l.TIPO_OPERACAO,
-        l.COMENTARIO,
-        l.COD_IDENTIFICACAO,
-
-        COALESCE(vc.FABRICANTE, vi.FABRICANTE, vco.FABRICANTE) AS FABRICANTE,
-        COALESCE(vc.SERIAL, vi.SERIAL, vco.SERIAL) AS SERIAL
-
+      SELECT
+        UPPER(COALESCE(CAST(l.CODIGO AS CHAR), '')) AS CODIGO,
+        l.DATA_ALTERACAO,
+        UPPER(COALESCE(l.TIPO_ATIVO, '')) AS TIPO_ATIVO,
+        UPPER(COALESCE(l.CAMPO_ALTERADO, '')) AS CAMPO_ALTERADO,
+        UPPER(COALESCE(l.VALOR_ANTIGO, '')) AS VALOR_ANTIGO,
+        UPPER(COALESCE(l.VALOR_NOVO, '')) AS VALOR_NOVO,
+        UPPER(COALESCE(l.USUARIO_NOME, '')) AS USUARIO_NOME,
+        UPPER(COALESCE(l.TIPO_OPERACAO, '')) AS TIPO_OPERACAO,
+        UPPER(COALESCE(l.COMENTARIO, '')) AS COMENTARIO,
+        UPPER(COALESCE(CAST(l.COD_IDENTIFICACAO AS CHAR), '')) AS COD_IDENTIFICACAO,
+        UPPER(COALESCE(vc.FABRICANTE, vi.FABRICANTE, vco.FABRICANTE, '')) AS FABRICANTE,
+        UPPER(COALESCE(vc.SERIAL, vi.SERIAL, vco.SERIAL, '')) AS SERIAL,
+        UPPER(COALESCE(vc.PATRIMONIO, vi.PATRIMONIO, vco.PATRIMONIO, '')) AS PATRIMONIO
       FROM glpisv_glpi.glpi_log_alteracoes_sist l
-
       LEFT JOIN V_COMPUTADORES_GSV vc
-        ON l.TIPO_ATIVO = 'produtos'
+        ON LOWER(l.TIPO_ATIVO) = 'computadores'
        AND vc.CODIGO = l.CODIGO
-
       LEFT JOIN V_IMPRESSORAS_GSV vi
-        ON l.TIPO_ATIVO = 'impressoras'
+        ON LOWER(l.TIPO_ATIVO) = 'impressoras'
        AND vi.CODIGO = l.CODIGO
-
       LEFT JOIN V_COLETORES_GSV vco
-        ON l.TIPO_ATIVO = 'coletores'
+        ON LOWER(l.TIPO_ATIVO) = 'coletores'
        AND vco.CODIGO = l.CODIGO
-
       WHERE 1=1
     `;
 
     const params = [];
 
     if (req.query.codigo) {
-      sql += " AND CAST(l.CODIGO AS CHAR) LIKE ?";
-      params.push(`%${req.query.codigo}%`);
+      sql += " AND UPPER(CAST(l.CODIGO AS CHAR)) LIKE ?";
+      params.push(`%${String(req.query.codigo).toUpperCase()}%`);
     }
 
     if (req.query.tipoAtivo) {
-      sql += " AND l.TIPO_ATIVO LIKE ?";
-      params.push(`%${req.query.tipoAtivo}%`);
+      sql += " AND UPPER(COALESCE(l.TIPO_ATIVO, '')) LIKE ?";
+      params.push(`%${String(req.query.tipoAtivo).toUpperCase()}%`);
     }
 
     if (req.query.campoAlterado) {
-      sql += " AND l.CAMPO_ALTERADO LIKE ?";
-      params.push(`%${req.query.campoAlterado}%`);
+      sql += " AND UPPER(COALESCE(l.CAMPO_ALTERADO, '')) LIKE ?";
+      params.push(`%${String(req.query.campoAlterado).toUpperCase()}%`);
     }
 
     if (req.query.usuario) {
-      sql += " AND l.USUARIO_NOME LIKE ?";
-      params.push(`%${req.query.usuario}%`);
+      sql += " AND UPPER(COALESCE(l.USUARIO_NOME, '')) LIKE ?";
+      params.push(`%${String(req.query.usuario).toUpperCase()}%`);
     }
 
     if (req.query.tipoOperacao) {
-      sql += " AND l.TIPO_OPERACAO LIKE ?";
-      params.push(`%${req.query.tipoOperacao}%`);
+      sql += " AND UPPER(COALESCE(l.TIPO_OPERACAO, '')) LIKE ?";
+      params.push(`%${String(req.query.tipoOperacao).toUpperCase()}%`);
     }
 
     if (req.query.codIdentificacao) {
-      sql += " AND CAST(l.COD_IDENTIFICACAO AS CHAR) LIKE ?";
-      params.push(`%${req.query.codIdentificacao}%`);
+      sql += " AND UPPER(CAST(l.COD_IDENTIFICACAO AS CHAR)) LIKE ?";
+      params.push(`%${String(req.query.codIdentificacao).toUpperCase()}%`);
     }
 
     const mapaOrdenacao = {
@@ -788,7 +1012,8 @@ app.get("/api/relatorios", async (req, res) => {
       TIPO_OPERACAO: "l.TIPO_OPERACAO",
       COD_IDENTIFICACAO: "l.COD_IDENTIFICACAO",
       FABRICANTE: "FABRICANTE",
-      SERIAL: "SERIAL"
+      SERIAL: "SERIAL",
+      DATA_ALTERACAO: "l.DATA_ALTERACAO",
     };
 
     const ordenarPor = mapaOrdenacao[req.query.ordenarPor] || "l.COD_IDENTIFICACAO";
@@ -820,9 +1045,18 @@ app.get("/api/relatorios/sem-patrimonio", async (req, res) => {
 
     const [rows] = await pool.query(
       `
-      SELECT CODIGO, NOME, STATUS, TIPO, LOCALIDADE, USUARIO, PATRIMONIO, CONTRATO, SERIAL
+      SELECT
+        UPPER(COALESCE(CAST(CODIGO AS CHAR), '')) AS CODIGO,
+        UPPER(COALESCE(NOME, '')) AS NOME,
+        UPPER(COALESCE(STATUS, '')) AS STATUS,
+        UPPER(COALESCE(TIPO, '')) AS TIPO,
+        UPPER(COALESCE(LOCALIDADE, '')) AS LOCALIDADE,
+        UPPER(COALESCE(USUARIO, '')) AS USUARIO,
+        UPPER(COALESCE(PATRIMONIO, '')) AS PATRIMONIO,
+        UPPER(COALESCE(CONTRATO, '')) AS CONTRATO,
+        UPPER(COALESCE(SERIAL, '')) AS SERIAL
       FROM ${view}
-      WHERE (PATRIMONIO IS NULL OR TRIM(PATRIMONIO) = "")
+      WHERE (PATRIMONIO IS NULL OR TRIM(PATRIMONIO) = '')
       ${whereExtra}
       ${orderBy}
       `,
@@ -848,9 +1082,18 @@ app.get("/api/relatorios/sem-contrato", async (req, res) => {
 
     const [rows] = await pool.query(
       `
-      SELECT CODIGO, NOME, STATUS, TIPO, LOCALIDADE, USUARIO, PATRIMONIO, CONTRATO, SERIAL
+      SELECT
+        UPPER(COALESCE(CAST(CODIGO AS CHAR), '')) AS CODIGO,
+        UPPER(COALESCE(NOME, '')) AS NOME,
+        UPPER(COALESCE(STATUS, '')) AS STATUS,
+        UPPER(COALESCE(TIPO, '')) AS TIPO,
+        UPPER(COALESCE(LOCALIDADE, '')) AS LOCALIDADE,
+        UPPER(COALESCE(USUARIO, '')) AS USUARIO,
+        UPPER(COALESCE(PATRIMONIO, '')) AS PATRIMONIO,
+        UPPER(COALESCE(CONTRATO, '')) AS CONTRATO,
+        UPPER(COALESCE(SERIAL, '')) AS SERIAL
       FROM ${view}
-      WHERE (CONTRATO IS NULL OR TRIM(CONTRATO) = "")
+      WHERE (CONTRATO IS NULL OR TRIM(CONTRATO) = '')
       ${whereExtra}
       ${orderBy}
       `,
@@ -876,9 +1119,18 @@ app.get("/api/relatorios/com-contrato", async (req, res) => {
 
     const [rows] = await pool.query(
       `
-      SELECT CODIGO, NOME, STATUS, TIPO, LOCALIDADE, USUARIO, PATRIMONIO, CONTRATO, SERIAL
+      SELECT
+        UPPER(COALESCE(CAST(CODIGO AS CHAR), '')) AS CODIGO,
+        UPPER(COALESCE(NOME, '')) AS NOME,
+        UPPER(COALESCE(STATUS, '')) AS STATUS,
+        UPPER(COALESCE(TIPO, '')) AS TIPO,
+        UPPER(COALESCE(LOCALIDADE, '')) AS LOCALIDADE,
+        UPPER(COALESCE(USUARIO, '')) AS USUARIO,
+        UPPER(COALESCE(PATRIMONIO, '')) AS PATRIMONIO,
+        UPPER(COALESCE(CONTRATO, '')) AS CONTRATO,
+        UPPER(COALESCE(SERIAL, '')) AS SERIAL
       FROM ${view}
-      WHERE (CONTRATO IS NOT NULL AND TRIM(CONTRATO) <> "")
+      WHERE (CONTRATO IS NOT NULL AND TRIM(CONTRATO) <> '')
       ${whereExtra}
       ${orderBy}
       `,
@@ -890,6 +1142,16 @@ app.get("/api/relatorios/com-contrato", async (req, res) => {
     console.error(err);
     res.status(500).json({ erro: err.message });
   }
+});
+
+/* =========================
+   SERVIR FRONTEND REACT
+========================= */
+
+app.use(express.static(path.join(__dirname, "build")));
+
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
 });
 
 app.listen(3001, () => {
